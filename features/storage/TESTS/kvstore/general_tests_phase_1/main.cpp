@@ -28,6 +28,7 @@
 #include "unity/unity.h"
 #include "utest/utest.h"
 #include "FileSystemStore.h"
+#include "features/storage/internal/utils.h"
 
 using namespace utest::v1;
 using namespace mbed;
@@ -74,7 +75,7 @@ static const int heap_alloc_threshold_size = 4096;
 static void kvstore_init()
 {
     int res;
-    size_t erase_size, ul_bd_size, rbp_bd_size;
+    size_t program_size, erase_size, ul_bd_size, rbp_bd_size;
     BlockDevice *sec_bd;
 
     res = bd->init();
@@ -109,10 +110,17 @@ static void kvstore_init()
             flash_bd = new FlashSimBlockDevice(bd);
             sec_bd = flash_bd;
         }
+        res = sec_bd->init();
+        TEST_ASSERT_EQUAL_ERROR_CODE(MBED_SUCCESS, res);
 
-        erase_size  = sec_bd->get_erase_size();
-        ul_bd_size  = erase_size * 4;
-        rbp_bd_size = erase_size * 2;
+        program_size  = sec_bd->get_program_size();
+        erase_size = sec_bd->get_erase_size();
+        // We must be able to hold at least 10 small keys (20 program sectors) and master record + internal data
+        ul_bd_size  = align_up(program_size * 40, erase_size);
+        rbp_bd_size = align_up(program_size * 40, erase_size);
+
+        res = sec_bd->deinit();
+        TEST_ASSERT_EQUAL_ERROR_CODE(MBED_SUCCESS, res);
 
         ul_bd = new SlicingBlockDevice(sec_bd, 0, ul_bd_size);
         rbp_bd = new SlicingBlockDevice(sec_bd, ul_bd_size, ul_bd_size + rbp_bd_size);
@@ -424,14 +432,14 @@ static void set_several_key_value_sizes()
 
     name[6] = 0;
 
-    for (i = 0; i < 26; i++) {
+    for (i = 0; i < 5; i++) {
         c = i + 'a';
         name[5] = c;
         res = kvstore->set(name, name, sizeof(name), 0);
         TEST_ASSERT_EQUAL_ERROR_CODE(MBED_SUCCESS, res);
     }
 
-    for (i = 0; i < 26; i++) {
+    for (i = 0; i < 5; i++) {
         c = i + 'a';
         name[5] = c;
         res = kvstore->get(name, buffer, sizeof(buffer), &actual_size, 0);
